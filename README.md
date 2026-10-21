@@ -1,36 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Drenix — Interactive Organizational Structure
 
-## Getting Started
-
-First, run the development server:
+Next.js 15 + three.js. Two views of the office structure that scale with fleet size (5 / 25 / 50 / 75 / 100 trucks):
+a 2D **Chart** and a **3D Company Map**. Every position opens its job description from Google Drive.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
+npm run build && npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Where things live
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| What | File |
+|---|---|
+| All data: job descriptions (verbatim from Drive), departments, headcount per truck count | `src/data/drenix-data.ts` |
+| Headcount math, deltas | `src/lib/org.ts` |
+| 2D chart | `src/components/ChartView.tsx` |
+| 3D scene (three.js) | `src/components/three/CompanyScene.ts` |
+| 3D UI: labels, drawer, breadcrumb | `src/components/Map3D.tsx` |
+| Styles / brand tokens | `src/app/globals.css` |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+HR edits only `src/data/drenix-data.ts`. To add a fleet size, add it to `TRUCK_STOPS` and `FLEET_MODELS`.
+Keep role `id`s stable between sizes — they drive the ▲/▼ deltas and NEW badges.
 
-## Learn More
+## Logo
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`public/drenix-mark.png` is the Drenix phoenix mark (transparent, 512×512) and `public/favicon-64.png` the tab icon, both cut from the official logo.
