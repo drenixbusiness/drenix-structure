@@ -779,6 +779,33 @@ button.exec-ceo:hover { box-shadow: 0 0 0 1px rgba(255, 197, 166, 0.6), 0 0 56px
 
 /* ------------------------------------------------------------------ Print */
 
+/* ---------- Legal pages (/privacy) ---------- */
+.legal { height: 100%; overflow-y: auto; }
+.legal-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center;
+  height: var(--header-h); padding: 0 max(20px, var(--safe-l));
+  background: rgba(21, 16, 14, 0.88); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--divider-soft);
+}
+.legal-head .brand { text-decoration: none; }
+.legal-body { max-width: 720px; margin: 0 auto; padding: 48px 20px calc(72px + var(--safe-b)); line-height: 1.65; font-size: 15px; }
+.legal-kicker { margin: 0 0 8px; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; }
+.legal-body h1 { margin: 0; font-size: 34px; line-height: 1.15; letter-spacing: -0.01em; }
+.legal-meta { margin: 8px 0 32px; color: var(--faint); font-size: 13px; }
+.legal-body h2 { margin: 36px 0 10px; font-size: 18px; padding-top: 20px; border-top: 1px solid var(--divider-soft); }
+.legal-body p, .legal-body li { color: var(--muted); }
+.legal-body b { color: var(--text); font-weight: 600; }
+.legal-body ul { margin: 0; padding-left: 20px; }
+.legal-body li + li { margin-top: 6px; }
+.legal-body li::marker { color: var(--accent); }
+.legal-body a { color: var(--a300); text-underline-offset: 3px; }
+.legal-body a:hover { color: var(--accent-2); }
+@media (max-width: 760px) {
+  .legal-body { padding-top: 32px; font-size: 14.5px; }
+  .legal-body h1 { font-size: 28px; }
+}
+
 @media print {
   @page { size: A4 landscape; margin: 8mm; }
   html, body { overflow: visible; height: auto; background: #15100e; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
