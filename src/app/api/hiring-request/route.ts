@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { emptyHiringRequest, formatHiringMessage, validateHiring, type HiringRequest } from "@/lib/hiring";
 
 // Posts an Employee Recruitment Request to the HR Telegram group.
-// The bot token stays on the server (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID in .env.local).
+// With BOT_API_URL + BOT_API_SECRET it goes through the assistant bot (which also notifies HR);
+// otherwise, or if the bot is unreachable, straight to Telegram (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID).
+// Secrets stay on the server (.env.local / Vercel env).
 
 export async function POST(req: Request) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) {
+  const botUrl = process.env.BOT_API_URL;
+  const botSecret = process.env.BOT_API_SECRET;
+  if ((!token || !chatId) && !(botUrl && botSecret)) {
     return NextResponse.json({ ok: false, error: "Telegram bot is not configured on the server." }, { status: 500 });
   }
 
@@ -34,6 +38,29 @@ export async function POST(req: Request) {
 
   const errors = validateHiring(data);
   if (Object.keys(errors).length) return NextResponse.json({ ok: false, error: "Please complete all required fields.", errors }, { status: 422 });
+
+  // Preferred path: the assistant bot (bot.drenix.uz) posts to the group AND notifies HR.
+  if (botUrl && botSecret) {
+    const r = await fetch(`${botUrl.replace(/\/$/, "")}/job-request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${botSecret}` },
+      body: JSON.stringify({
+        department: data.department,
+        position: data.position,
+        openPositions: Number(data.openPositions),
+        requester: data.requester,
+        html: formatHiringMessage(data),
+        fields: { ...data, website: undefined },
+      }),
+      signal: AbortSignal.timeout(15000),
+    }).catch(() => null);
+    if (r?.ok) return NextResponse.json({ ok: true });
+    console.error("Bot bridge failed:", r ? `${r.status} ${await r.text().catch(() => "")}` : "network error");
+    // bot unreachable → fall through to the direct Telegram send so the request is not lost
+  }
+  if (!token || !chatId) {
+    return NextResponse.json({ ok: false, error: "Could not send the request. Please try again." }, { status: 502 });
+  }
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
