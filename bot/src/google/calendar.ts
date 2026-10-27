@@ -55,6 +55,7 @@ export const formsGranted = () => !!load()?.scope?.includes("auth/forms.body");
 /** Called by the auth CLI after the consent screen. */
 export async function exchangeCode(code: string, redirectUri: string): Promise<string | null> {
   const res = await fetch("https://oauth2.googleapis.com/token", {
+    signal: AbortSignal.timeout(30_000),
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -90,6 +91,7 @@ export async function accessToken(): Promise<string> {
   if (!t) throw new GoogleError("Google Calendar is not connected");
   if (t.access_token && t.expires_at && t.expires_at - 60_000 > Date.now()) return t.access_token;
   const res = await fetch("https://oauth2.googleapis.com/token", {
+    signal: AbortSignal.timeout(30_000),
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -110,6 +112,7 @@ export async function accessToken(): Promise<string> {
 async function call<T>(method: string, path: string, query: Record<string, string> = {}, body?: unknown): Promise<T> {
   const qs = new URLSearchParams(query).toString();
   const res = await fetch(`${API}${path}${qs ? `?${qs}` : ""}`, {
+    signal: AbortSignal.timeout(30_000),
     method,
     headers: { Authorization: `Bearer ${await accessToken()}`, ...(body ? { "Content-Type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,

@@ -5,6 +5,7 @@ import { cancelPlan, executePlan } from "./ai/tools.js";
 import { recruitingReportLines } from "./services/recruiting.js";
 import { cancelSheetWrite, executeSheetWrite } from "./services/sheetWrites.js";
 import { cancelForm, executeForm } from "./services/forms.js";
+import { classify, friendly } from "./errors.js";
 import { transcribe } from "./ai/voice.js";
 import { isHr } from "./config.js";
 import { audit, db } from "./db.js";
@@ -59,7 +60,7 @@ async function hrAsk(user: User, text: string) {
     if (answer) await send(user.id, answer);
   } catch (e) {
     console.error("agent failed", e);
-    await send(user.id, t(lang, "error")).catch(() => null);
+    await send(user.id, friendly(e, lang)).catch(() => null);
   }
 }
 
@@ -310,7 +311,7 @@ export function registerHandlers() {
       }
     } catch (e) {
       console.error("callback failed", data, e);
-      await send(user.id, `${t(lang, "error")}\n<code>${esc(describe(e)).slice(0, 300)}</code>`).catch(() => null);
+      await send(user.id, friendly(e, lang)).catch(() => null);
     }
   });
 
@@ -338,6 +339,7 @@ async function handleVoice(ctx: Context, fileId: string) {
       text = await withTyping(user.id, () => transcribe(fileId));
     } catch (e) {
       console.error("transcribe failed", e);
+      if (classify(e) !== "unknown") return void (await send(user.id, friendly(e, lang)));
     }
     if (!text) return void (await send(user.id, t(lang, "voice_fail")));
     await send(user.id, t(lang, "voice_heard", { text: esc(text) }));

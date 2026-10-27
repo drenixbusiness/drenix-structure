@@ -5,6 +5,7 @@
 import type OpenAI from "openai";
 import { InputFile } from "grammy";
 import { audit, db } from "../db.js";
+import { hintFor } from "../errors.js";
 import * as gcal from "../google/calendar.js";
 import * as sheets from "../google/sheets.js";
 import { applicantsText, dashboardFileName, dashboardPdf, dashboardText, listApplicants, recruitingReportLines, recruitingStats, type ApplicantStatus } from "../services/recruiting.js";
@@ -20,7 +21,8 @@ import { computeStats, recommendations, reportFileName, reportPdf, reportText, t
 import { backlog, createTask, deleteTask, getTask, listTasks, STATUSES, updateTask, type Status, type Task, type TaskPatch } from "../services/tasks.js";
 import { bot, esc, InlineKeyboard, send } from "../tg.js";
 import { ymdOf } from "../time.js";
-import { addMinutes, currentOrNextShift, fmtDateTime, fmtTime, inShift, isoLocal, parseIso, shiftBounds, workdaysFrom } from "../time.js";
+import { hrLang } from "../services/users.js";
+import { addMinutes, currentOrNextShift, fmtDateTime, fmtTime, inShift, isoLocal, parseIso, shiftBounds, shiftDateOf, workdaysFrom } from "../time.js";
 
 export interface ToolCtx {
   chatId: number;
@@ -43,6 +45,7 @@ const taskProps = {
   duration_min: N("Estimated duration in minutes (optional)"),
   deadline: S("Deadline, ISO +05:00 (optional)"),
   priority: { type: "integer", enum: [1, 2, 3, 4], description: "1 Critical, 2 High, 3 Medium, 4 Low" },
+  remind_before_min: { type: "array", items: { type: "number" }, description: "Reminders before start, minutes (e.g. [30] or [60, 10]); omit for the default 15" },
 };
 
 export const TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -387,6 +390,9 @@ const taskView = (x: Task) => ({
   priority: `P${x.priority}`,
   shift_date: x.shift_date,
   start: x.start_at ? isoLocal(new Date(x.start_at)) : null,
+  // spelled out so the reply shows the real day (the model tends to move day-off times to the next workday)
+  ...(x.start_at ? { starts_on: fmtDateTime(new Date(x.start_at), hrLang(), true) } : {}),
+  ...(x.reminders ? { remind_before_min: JSON.parse(x.reminders) as number[] } : {}),
   duration_min: x.duration_min,
   deadline: x.deadline_at ? isoLocal(new Date(x.deadline_at)) : null,
   depends_on: x.depends_on,
@@ -397,11 +403,14 @@ const taskView = (x: Task) => ({
 
 const iv = (a: { start: Date; end: Date; title?: string }) => ({ start: isoLocal(a.start), end: isoLocal(a.end), ...(a.title ? { title: a.title } : {}) });
 
+/** The day a task belongs to: its shift, or for a time outside any shift (night, day off) its own calendar day. */
+const shiftOf = (start: Date) => (inShift(start) ? currentOrNextShift(start) : shiftDateOf(start));
+
 /** Flags times that fall outside the task's workday (e.g. on a day off) so the model can correct itself. */
 function timeWarning(x: Task): string | undefined {
   if (!x.start_at) return undefined;
   const s = new Date(x.start_at);
-  if (!inShift(s)) return `start ${isoLocal(s)} is outside working hours / on a day off — ask the user or move it into a shift`;
+  if (!inShift(s)) return `start ${isoLocal(s)} is outside the shift / on a day off — fine if the user named this time; if you chose it yourself, move it into a shift`;
   if (x.shift_date && x.shift_date !== currentOrNextShift(s)) return `start ${isoLocal(s)} does not belong to shift_date ${x.shift_date}`;
   return undefined;
 }
@@ -473,7 +482,7 @@ const impl: Record<string, Impl> = {
       const { task, duplicate } = createTask({
         title: str(it.title) ?? "Task",
         description: str(it.description) ?? null,
-        shift_date: ymd(it.shift_date) ?? (start ? currentOrNextShift(start) : null),
+        shift_date: start ? shiftOf(start) : (ymd(it.shift_date) ?? null),
         start_at: start ?? null,
         duration_min: num(it.duration_min) ?? null,
         deadline_at: date(it.deadline) ?? null,
@@ -481,6 +490,7 @@ const impl: Record<string, Impl> = {
         recurrence: str(it.recurrence) ?? null,
         depends_on: dep ?? null,
         job_request_id: num(it.job_request_id) ?? null,
+        remindersMin: mins(it.remind_before_min),
       });
       created.push(task);
       out.push({ ...taskView(task), duplicate: duplicate || undefined, warning: timeWarning(task) });
@@ -504,7 +514,8 @@ const impl: Record<string, Impl> = {
     if (a.result !== undefined) patch.result = str(a.result) ?? null;
     if (a.notes !== undefined) patch.notes = str(a.notes) ?? null;
     if (a.depends_on_task_id !== undefined) patch.depends_on = num(a.depends_on_task_id) || null;
-    if (patch.start_at && patch.shift_date === undefined) patch.shift_date = currentOrNextShift(patch.start_at);
+    if (a.remind_before_min !== undefined) patch.remindersMin = mins(a.remind_before_min) ?? null;
+    if (patch.start_at) patch.shift_date = shiftOf(patch.start_at);
     const after = updateTask(id, patch)!;
     audit("ai", "update_task", { id, patch });
     return { ok: true, task: taskView(after), warning: timeWarning(after) };
@@ -1016,7 +1027,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolCtx): Prom
     return JSON.stringify(res ?? { ok: true });
   } catch (e) {
     console.error(`tool ${name} failed:`, e);
-    return JSON.stringify({ ok: false, error: (e as Error).message });
+    return JSON.stringify({ ok: false, error: (e as Error).message, explain_to_user: hintFor(e) });
   }
 }
 

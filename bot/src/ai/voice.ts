@@ -10,7 +10,7 @@ const HINT =
 export async function transcribe(fileId: string): Promise<string> {
   const file = await bot.api.getFile(fileId);
   if (!file.file_path) throw new Error("Telegram returned no file path");
-  const res = await fetch(`https://api.telegram.org/file/bot${config.telegramToken}/${file.file_path}`);
+  const res = await fetch(`https://api.telegram.org/file/bot${config.telegramToken}/${file.file_path}`, { signal: AbortSignal.timeout(60_000) });
   if (!res.ok) throw new Error(`voice download failed: ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   const name = file.file_path.split("/").pop() || "voice.ogg";

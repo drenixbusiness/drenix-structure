@@ -3,6 +3,7 @@
  * On confirm the tab is read again: a cell that changed in the meantime is not overwritten.
  */
 import { audit, db } from "../db.js";
+import { friendly } from "../errors.js";
 import * as sheets from "../google/sheets.js";
 import { t, type Lang } from "../i18n.js";
 import { esc, InlineKeyboard, send } from "../tg.js";
@@ -86,7 +87,7 @@ export async function executeSheetWrite(id: number, lang: Lang): Promise<string>
     return lines.join("\n");
   } catch (e) {
     db.prepare("UPDATE pending_actions SET status = 'pending' WHERE id = ?").run(id); // allow retry
-    return `❌ ${esc((e as Error).message)}`;
+    return `❌ ${friendly(e, lang)}`;
   }
 }
 

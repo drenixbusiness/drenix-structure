@@ -4,7 +4,7 @@
  */
 import { InputFile } from "grammy";
 import { config } from "../config.js";
-import { db, getSetting, setSetting } from "../db.js";
+import { db, getSetting, housekeeping, setSetting } from "../db.js";
 import * as gcal from "../google/calendar.js";
 import { ct, t, type Lang } from "../i18n.js";
 import { bot, describe, esc, InlineKeyboard, send, sendHr } from "../tg.js";
@@ -12,6 +12,7 @@ import { addDays, addMinutes, atLocal, currentOrNextShift, fmtDay, fmtTime, isWo
 import { askOutcome, getCandidate, placeText } from "./candidates.js";
 import { getMeeting, syncCalendar, type Meeting } from "./meetings.js";
 import { checkNewResponses } from "./forms.js";
+import { alertHr } from "../errors.js";
 import { due, HR_CHAT, markFailed, markSent, type Notification } from "./notifications.js";
 import { recruitingReportLines } from "./recruiting.js";
 import { computeStats, recommendations, reportFileName, reportPdf, reportText } from "./reports.js";
@@ -20,23 +21,38 @@ import { hrChats } from "./users.js";
 
 let timer: NodeJS.Timeout | null = null;
 let lastSync = 0;
+let lastCleanup = 0;
 let running = false;
 
 export function startScheduler() {
+  // each step is isolated and time-boxed: one failing or hanging job never stops the others or the next ticks
+  const step = async (name: string, fn: () => Promise<unknown>, ms = 120_000) => {
+    let timeout: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([fn(), new Promise((_, reject) => (timeout = setTimeout(() => reject(new Error(`${name} timed out after ${ms / 1000}s`)), ms)))]);
+    } catch (e) {
+      console.error(`scheduler ${name}:`, describe(e));
+      await alertHr(e, name);
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
   const tick = async () => {
     if (running) return;
     running = true;
     try {
-      await processNotifications();
-      await dailyRoutines();
-      await interviewFollowUps();
+      await step("notifications", processNotifications);
+      await step("daily routines", dailyRoutines);
+      await step("interview follow-ups", interviewFollowUps);
       if (Date.now() - lastSync > 5 * 60_000) {
         lastSync = Date.now();
-        await syncCalendar().catch((e) => console.warn("calendar sync:", (e as Error).message));
-        await checkNewResponses();
+        await step("calendar sync", syncCalendar);
+        await step("form responses", checkNewResponses);
       }
-    } catch (e) {
-      console.error("scheduler tick failed", e);
+      if (Date.now() - lastCleanup > 24 * 3600_000) {
+        lastCleanup = Date.now();
+        await step("housekeeping", async () => housekeeping());
+      }
     } finally {
       running = false;
     }
@@ -49,8 +65,17 @@ export const stopScheduler = () => timer && clearInterval(timer);
 
 // ---------------- notifications ----------------
 
+/** "In 5 minutes" reminders are useless after downtime (server off, restart): they are dropped, not sent late. */
+const TIMED = ["meeting", "event", "candidate_meeting", "task_start", "task_deadline"];
+const STALE_MS = 20 * 60_000;
+
 async function processNotifications() {
   for (const n of due()) {
+    if (TIMED.includes(n.kind) && Date.now() - new Date(n.due_at).getTime() > STALE_MS) {
+      console.warn("notification skipped (too late after downtime)", n.ref, n.due_at);
+      markSent(n.id);
+      continue;
+    }
     try {
       const delivered = await deliver(n);
       if (delivered !== false) markSent(n.id);
@@ -110,7 +135,7 @@ async function deliver(n: Notification): Promise<boolean | void> {
       if (!task || !OPEN.includes(task.status)) return;
       const key = n.kind === "task_start" ? "rem_task" : n.kind === "task_deadline" ? "rem_deadline" : "rem_overdue";
       const when = n.kind === "task_start" ? task.start_at : task.deadline_at;
-      await toHr((l) => ({ html: t(l, key, { title: esc(task.title), time: when ? fmtTime(new Date(when)) : "" }), kb: taskKb(task, l) }));
+      await toHr((l) => ({ html: t(l, key, { in: inLabel(l, Number(p.offset ?? 15)), title: esc(task.title), time: when ? fmtTime(new Date(when)) : "" }), kb: taskKb(task, l) }));
       return;
     }
     case "delete_message": {

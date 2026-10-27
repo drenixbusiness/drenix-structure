@@ -89,6 +89,30 @@ Then in **Vercel → Project → Settings → Environment Variables** add and re
 
 Updating: `git pull && npm ci && npm run build && pm2 restart drenix-assistant`.
 
+### Running 24/7
+
+- PM2 restarts the bot after a crash (growing delay 2 s → 15 s, keeps trying through long outages) and after a server reboot (`pm2 startup` + `pm2 save`).
+- `pm2 install pm2-logrotate` once, so logs never fill the disk.
+- **Google Cloud → OAuth consent screen → Publishing status must be "In production".** In "Testing" Google expires the connection every 7 days and Calendar/Sheets/Forms stop working.
+- Inside the bot: every background job (reminders, briefing, calendar sync, form checks) is isolated and time-boxed; all outside requests have timeouts; reminders that became pointless during downtime ("in 5 minutes" for a meeting that already started) are dropped instead of sent late; old chat history/reminders are cleaned up after 90 days.
+- Problems that need a person (Google disconnected, API disabled, OpenAI key/credit) are sent to Daniel in plain words, at most once per 6 hours. Errors during a chat are explained the same way.
+
+### Troubleshooting (`pm2 logs drenix-assistant`)
+
+| Log / message | Meaning | Fix |
+|---|---|---|
+| `fatal: Telegram rejected TELEGRAM_BOT_TOKEN` | token wrong or revoked | new token from @BotFather → `.env` → `pm2 restart drenix-assistant` |
+| `fatal: another copy of the bot is running` (409) | the same token polls elsewhere (local PC!) | stop the other copy; `pm2 ls` must show one process |
+| `port 4000 is busy` / `EADDRINUSE` | an old process still runs | `pm2 delete all && pm2 start ecosystem.config.cjs` |
+| `Missing required env var X` | `.env` incomplete | compare with `.env.example` |
+| "🔌 Google ulanishi uzildi" in Telegram | refresh token revoked/expired | `npm run google:auth:prod` on the server; set consent screen to *In production* |
+| "⚙️ … API yoqilmagan" | Calendar/Sheets/Forms API off in the Cloud project | enable it in console.cloud.google.com → APIs & Services |
+| "💳 OpenAI hisobida mablag' tugadi" | no OpenAI credit | top up at platform.openai.com → Billing |
+| "🔑 OpenAI kaliti ishlamayapti" | key revoked | new key → `.env` → restart |
+| `Could not locate the bindings file` (better-sqlite3) | native module not built | `sudo apt-get install -y build-essential python3 && npm rebuild better-sqlite3` |
+| `notification skipped (too late after downtime)` | the bot was down when a reminder was due | nothing — expected after an outage |
+| `curl https://bot.drenix.uz/health` fails | nginx/DNS/router | `sudo nginx -t`, check DNS A record and port forwarding; the website still falls back to posting straight to the group |
+
 ## Using the bot
 
 - **Daniel**: open the bot, `/start`, choose a language. Then just write or send voice notes. Commands: `/today`, `/report`, `/lang`, `/google`.

@@ -204,6 +204,8 @@ const MIGRATIONS: string[] = [
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
+  // v4: per-task reminder offsets (JSON minutes before start; NULL = 15)
+  `ALTER TABLE tasks ADD COLUMN reminders TEXT;`,
 ];
 
 export function migrate() {
@@ -218,6 +220,13 @@ export function migrate() {
 migrate();
 
 export const nowIso = () => new Date().toISOString();
+
+/** Runs from the scheduler: old chat history, finished reminders and answered buttons are not needed forever. */
+export function housekeeping() {
+  db.prepare("DELETE FROM conversation WHERE at < datetime('now', '-90 days')").run();
+  db.prepare("DELETE FROM notifications WHERE (sent_at IS NOT NULL OR cancelled = 1) AND due_at < ?").run(new Date(Date.now() - 90 * 86_400_000).toISOString());
+  db.prepare("DELETE FROM pending_actions WHERE status != 'pending' AND created_at < datetime('now', '-90 days')").run();
+}
 
 export function audit(actor: string, action: string, detail?: unknown) {
   db.prepare("INSERT INTO audit_log (actor, action, detail) VALUES (?, ?, ?)").run(

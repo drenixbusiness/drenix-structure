@@ -15,11 +15,15 @@ export async function send(chatId: number, html: string, kb?: Keyboard, opts: { 
   const chunks = splitHtml(html);
   let last: Awaited<ReturnType<typeof bot.api.sendMessage>> | null = null;
   for (let i = 0; i < chunks.length; i++) {
-    last = await bot.api.sendMessage(chatId, chunks[i], {
-      parse_mode: "HTML",
-      link_preview_options: { is_disabled: true },
-      reply_markup: i === chunks.length - 1 ? kb : undefined,
-    });
+    const reply_markup = i === chunks.length - 1 ? kb : undefined;
+    try {
+      last = await bot.api.sendMessage(chatId, chunks[i], { parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup });
+    } catch (e) {
+      // broken HTML from the model must not swallow the whole answer: resend as plain text
+      if (!(e instanceof GrammyError && e.error_code === 400 && /parse entities|can't find end|unsupported start tag/i.test(e.description))) throw e;
+      const plain = chunks[i].replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+      last = await bot.api.sendMessage(chatId, plain, { link_preview_options: { is_disabled: true }, reply_markup });
+    }
     if (opts.track) trackMessage(chatId, last.message_id);
   }
   return last!;

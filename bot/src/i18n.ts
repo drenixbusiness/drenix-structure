@@ -82,7 +82,7 @@ const uz: Dict = {
   in_15: "15 daqiqadan keyin",
   in_5: "5 daqiqadan keyin",
   rem_meeting: "⏰ {in}: <b>{title}</b>\n🕒 {time}{extra}",
-  rem_task: "⏰ 15 daqiqadan keyin vazifa: <b>{title}</b> ({time})",
+  rem_task: "⏰ {in} — vazifa: <b>{title}</b> ({time})",
   rem_deadline: "⚠️ Deadline 1 soatdan keyin: <b>{title}</b> ({time})",
   rem_overdue: "❗ Muddati o'tdi: <b>{title}</b>",
 
@@ -200,7 +200,7 @@ const ru: Dict = {
   in_15: "Через 15 минут",
   in_5: "Через 5 минут",
   rem_meeting: "⏰ {in}: <b>{title}</b>\n🕒 {time}{extra}",
-  rem_task: "⏰ Через 15 минут задача: <b>{title}</b> ({time})",
+  rem_task: "⏰ {in} — задача: <b>{title}</b> ({time})",
   rem_deadline: "⚠️ Дедлайн через 1 час: <b>{title}</b> ({time})",
   rem_overdue: "❗ Просрочено: <b>{title}</b>",
 
@@ -316,7 +316,7 @@ const en: Dict = {
   in_15: "In 15 minutes",
   in_5: "In 5 minutes",
   rem_meeting: "⏰ {in}: <b>{title}</b>\n🕒 {time}{extra}",
-  rem_task: "⏰ Task in 15 minutes: <b>{title}</b> ({time})",
+  rem_task: "⏰ {in} — task: <b>{title}</b> ({time})",
   rem_deadline: "⚠️ Deadline in 1 hour: <b>{title}</b> ({time})",
   rem_overdue: "❗ Overdue: <b>{title}</b>",
 

@@ -20,6 +20,7 @@ export interface Task {
   result: string | null;
   notes: string | null;
   recurrence: string | null;
+  reminders: string | null; // JSON minutes before start; NULL = 15
   recurring_parent: number | null;
   depends_on: number | null;
   job_request_id: number | null;
@@ -31,6 +32,7 @@ export interface Task {
 
 export interface TaskInput {
   title: string;
+  remindersMin?: number[];
   description?: string | null;
   shift_date?: string | null;
   start_at?: Date | null;
@@ -58,8 +60,8 @@ export function createTask(input: TaskInput): { task: Task; duplicate: boolean }
   const blocked = input.depends_on ? getTask(input.depends_on)?.status !== "completed" : false;
   const info = db
     .prepare(
-      `INSERT INTO tasks (title, description, shift_date, start_at, duration_min, deadline_at, priority, status, recurrence, depends_on, job_request_id, recurring_parent)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (title, description, shift_date, start_at, duration_min, deadline_at, priority, status, recurrence, depends_on, job_request_id, recurring_parent, reminders)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.title.trim(),
@@ -74,6 +76,7 @@ export function createTask(input: TaskInput): { task: Task; duplicate: boolean }
       input.depends_on ?? null,
       input.job_request_id ?? null,
       input.recurring_parent ?? null,
+      input.remindersMin?.length ? JSON.stringify(input.remindersMin) : null,
     );
   const task = getTask(Number(info.lastInsertRowid))!;
   scheduleTaskReminders(task);
@@ -86,6 +89,7 @@ const clampPriority = (p?: number) => Math.min(4, Math.max(1, Math.round(p ?? 3)
 
 export interface TaskPatch {
   title?: string;
+  remindersMin?: number[] | null;
   description?: string | null;
   shift_date?: string | null;
   start_at?: Date | null;
@@ -112,6 +116,7 @@ export function updateTask(id: number, patch: TaskPatch): Task | null {
   if (patch.result !== undefined) cols.result = patch.result;
   if (patch.notes !== undefined) cols.notes = patch.notes;
   if (patch.depends_on !== undefined) cols.depends_on = patch.depends_on;
+  if (patch.remindersMin !== undefined) cols.reminders = patch.remindersMin?.length ? JSON.stringify(patch.remindersMin) : null;
   if (patch.status !== undefined) {
     cols.status = patch.status;
     cols.completed_at = patch.status === "completed" ? new Date().toISOString() : null;
@@ -152,8 +157,16 @@ export function scheduleTaskReminders(t: Task) {
   if (!OPEN.includes(t.status) || t.recurrence) return;
   const now = Date.now();
   if (t.start_at) {
-    const at = addMinutes(new Date(t.start_at), -15);
-    if (at.getTime() > now) schedule(`task:${t.id}:start:${t.start_at}`, HR_CHAT, "task_start", at, { taskId: t.id });
+    let offsets = [15];
+    try {
+      if (t.reminders) offsets = JSON.parse(t.reminders) as number[];
+    } catch {
+      /* keep default */
+    }
+    for (const o of offsets) {
+      const at = addMinutes(new Date(t.start_at), -o);
+      if (at.getTime() > now) schedule(`task:${t.id}:start:${t.start_at}:${o}`, HR_CHAT, "task_start", at, { taskId: t.id, offset: o });
+    }
   }
   if (t.deadline_at) {
     const dl = new Date(t.deadline_at);

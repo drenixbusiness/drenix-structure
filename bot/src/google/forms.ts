@@ -11,6 +11,7 @@ async function call<T>(method: string, path: string, query: Record<string, strin
   if (!formsGranted()) throw new GoogleError(NOT_GRANTED);
   const qs = new URLSearchParams(query).toString();
   const res = await fetch(`${API}${path}${qs ? `?${qs}` : ""}`, {
+    signal: AbortSignal.timeout(30_000),
     method,
     headers: { Authorization: `Bearer ${await accessToken()}`, ...(body ? { "Content-Type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,

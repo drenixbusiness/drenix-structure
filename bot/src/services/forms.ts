@@ -3,6 +3,7 @@
  * presses ✅, the bot creates + publishes the form and sends the links. New responses are announced.
  */
 import { audit, db } from "../db.js";
+import { friendly } from "../errors.js";
 import { formsGranted, GoogleError } from "../google/calendar.js";
 import * as gforms from "../google/forms.js";
 import { t, type Lang } from "../i18n.js";
@@ -105,7 +106,7 @@ export async function executeForm(id: number, lang: Lang): Promise<string> {
     return [L.created, `<b>${esc(d.title)}</b>`, "", `${L.send}:`, f.responderUri, "", `${L.edit}: <a href="${gforms.editUrl(f.formId)}">Google Forms</a>`, "", L.note].join("\n");
   } catch (e) {
     db.prepare("UPDATE pending_actions SET status = 'pending' WHERE id = ?").run(id); // allow retry
-    return `❌ ${esc((e as Error).message)}`;
+    return `❌ ${friendly(e, lang)}`;
   }
 }
 
